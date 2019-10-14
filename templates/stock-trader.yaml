@@ -1,0 +1,575 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: stock-trader
+  annotations:
+    openshift.io/display-name: Stock Trader Lite on OpenShift
+    description: Stock Trader Lite on OpenShift
+    tags: liberty,websphere,openshift
+    openshift.io/provider-display-name: IBM Client Dev Advocacy.
+    openshift.io/documentation-url: https://github.com/IBMStockTraderLite/stocktrader-openshift.git
+    openshift.io/support-url: https://access.redhat.com
+labels:
+  app: stock-trader
+parameters:
+- name: APPLICATION_NAME
+  displayName: Application name
+  description: The name for the application.
+  value: stock-trader
+  required: true
+- name: APPLICATION_HOSTNAME
+  displayName: Application hostname
+  description: 'Custom hostname for service routes.  Leave blank for default hostname, e.g.: <application-name>.<project>.<default-domain-suffix>'
+  value: 'stocktrader-microservices.apps.ocp.kubernetes-workshops.com'
+  required: false
+- name: MARIA_DB_SERVICE
+  displayName: Name of transactional database service
+  description: Name of transactional database service
+  value: mariadb
+  required: true
+- name: MARIA_DB_PORT
+  displayName: Transactional database port
+  description: Transactional database port
+  value: '3306'
+  required: true
+- name: MONGO_DB_SERVICE
+  displayName: Name of history database service
+  description: Name of history database service
+  value: mongodb
+  required: true
+- name: MONGO_DB_PORT
+  displayName: History database port
+  description: History database port
+  value: '27017'
+  required: true
+- name: TRADE_HISTORY_SERVICE
+  displayName: Name of trade history service
+  description: Name of trade history service
+  value: trade-history
+  required: true
+- name: TRADE_HISTORY_PORT
+  displayName: Trade History service port
+  description: Trade History service port
+  value: '9080'
+  required: true
+- name: GENERIC_TRIGGER_SECRET
+  displayName: Generic build trigger secret
+  description: Generic build trigger secret
+  from: "[a-zA-Z0-9]{8}"
+  generate: expression
+objects:
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: tradr
+    annotations:
+      template.alpha.openshift.io/wait-for-ready: 'true'
+    labels:
+      deploymentConfig: tradr
+  spec:
+    strategy:
+      type: Recreate
+    triggers:
+     - type: ImageChange
+       imageChangeParams:
+         automatic: true
+         containerNames:
+         - tradr
+         from:
+           kind: ImageStreamTag
+           name: 'tradr:latest'
+           namespace: openshift
+     - type: ConfigChange
+    replicas: 1
+    selector:
+      deploymentConfig: tradr
+    template:
+      metadata:
+        labels:
+          deploymentConfig: tradr
+      spec:
+        containers:
+        - name: tradr
+          image: tradr
+          ports:
+          - name: http
+            containerPort: 3000
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 300m
+              memory: 300Mi
+            requests:
+              cpu: 5m
+              memory: 250Mi
+          imagePullPolicy: Always
+          securityContext:
+            capabilities: {}
+            privileged: false
+        restartPolicy: Always
+        dnsPolicy: ClusterFirst
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: tradr
+    annotations:
+      description: The app server's http port
+  spec:
+    ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+    selector:
+      deploymentConfig: tradr
+
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: trade-history
+    annotations:
+      template.alpha.openshift.io/wait-for-ready: 'true'
+    labels:
+      deploymentConfig: trade-history
+  spec:
+    strategy:
+      type: Recreate
+    triggers:
+     - type: ImageChange
+       imageChangeParams:
+         automatic: true
+         containerNames:
+         - trade-history
+         from:
+           kind: ImageStreamTag
+           name: 'trade-history:latest'
+           namespace: openshift
+     - type: ConfigChange
+    replicas: 1
+    selector:
+      deploymentConfig: trade-history
+    template:
+      metadata:
+        labels:
+          deploymentConfig: trade-history
+      spec:
+        containers:
+        - name: trade-history
+          image: trade-history
+          env:
+          - name: MONGO_IP
+            value: "${MONGO_DB_SERVICE}"
+          - name: MONGO_PORT
+            value: "${MONGO_DB_PORT}"
+          - name: MONGO_AUTH_DB
+            valueFrom:
+              secretKeyRef:
+                name: mongodb
+                key: database-name
+          - name: MONGO_USER
+            valueFrom:
+              secretKeyRef:
+                name: mongodb
+                key: database-user
+          - name: MONGO_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mongodb
+                key: database-password
+          - name: STOCK_QUOTE_URL
+            valueFrom:
+              secretKeyRef:
+                name: stockquote
+                key: url
+
+          ports:
+          - name: http
+            containerPort: 9080
+            protocol: TCP
+          resources:
+            limits:
+              cpu: 300m
+              memory: 300Mi
+            requests:
+              cpu: 5m
+              memory: 250Mi
+          readinessProbe:
+            httpGet:
+              path: /trade-history/readiness
+              port: 9080
+            initialDelaySeconds: 20
+            timeoutSeconds: 3
+            periodSeconds: 10
+          imagePullPolicy: Always
+          securityContext:
+            capabilities: {}
+            privileged: false
+        restartPolicy: Always
+        dnsPolicy: ClusterFirst
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: trade-history
+    annotations:
+      description: The app server's http port
+  spec:
+    ports:
+    - protocol: TCP
+      port: 9080
+      targetPort: 9080
+    selector:
+      deploymentConfig: trade-history
+
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: stockquote
+    annotations:
+      template.alpha.openshift.io/wait-for-ready: 'true'
+    labels:
+      deploymentConfig: stockquote
+  spec:
+    strategy:
+      type: Recreate
+    triggers:
+     - type: ImageChange
+       imageChangeParams:
+         automatic: true
+         containerNames:
+         - stockquote
+         from:
+           kind: ImageStreamTag
+           name: 'stock-quote:latest'
+           namespace: openshift
+     - type: ConfigChange
+    replicas: 1
+    selector:
+      deploymentConfig: stockquote
+    template:
+      metadata:
+        labels:
+          deploymentConfig: stockquote
+      spec:
+        containers:
+        - name: stockquote
+          image: stock-quote
+          env:
+          - name: API_CONNECT_PROXY_URL
+            valueFrom:
+              secretKeyRef:
+                name: stockquote
+                key: apicurl
+          - name: IEX_URL
+            valueFrom:
+              secretKeyRef:
+                name: stockquote
+                key: iexurl
+          ports:
+          - name: http
+            containerPort: 9080
+            protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /stock-quote/about
+              port: 9080
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 300m
+              memory: 300Mi
+            requests:
+              cpu: 5m
+              memory: 250Mi
+          imagePullPolicy: Always
+          securityContext:
+            capabilities: {}
+            privileged: false
+        restartPolicy: Always
+        dnsPolicy: ClusterFirst
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: stockquote
+    annotations:
+      description: The app server's http port
+  spec:
+    ports:
+    - protocol: TCP
+      port: 9080
+      targetPort: 9080
+    selector:
+      deploymentConfig: stockquote
+
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: event-streams-consumer
+    annotations:
+      template.alpha.openshift.io/wait-for-ready: 'true'
+    labels:
+      deploymentConfig: event-streams-consumer
+  spec:
+    strategy:
+      type: Recreate
+    triggers:
+     - type: ImageChange
+       imageChangeParams:
+         automatic: true
+         containerNames:
+         - event-streams-consumer
+         from:
+           kind: ImageStreamTag
+           name: 'event-streams-consumer:latest'
+           namespace: openshift
+     - type: ConfigChange
+    replicas: 1
+    selector:
+      deploymentConfig: event-streams-consumer
+    template:
+      metadata:
+        labels:
+          deploymentConfig: event-streams-consumer
+      spec:
+        containers:
+        - name: event-streams-consumer
+          image: event-streams-consumer
+          env:
+          - name: MONGO_IP
+            value: "${MONGO_DB_SERVICE}"
+          - name: MONGO_PORT
+            value: "${MONGO_DB_PORT}"
+          - name: MONGO_AUTH_DB
+            valueFrom:
+              secretKeyRef:
+                name: mongodb
+                key: database-name
+          - name: MONGO_USER
+            valueFrom:
+              secretKeyRef:
+                name: mongodb
+                key: database-user
+          - name: MONGO_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mongodb
+                key: database-password
+          - name: KAFKA_TOPIC
+            valueFrom:
+              secretKeyRef:
+                name: kafka
+                key: topic
+                optional: true
+          - name: KAFKA_BROKER1_DNS
+            valueFrom:
+              secretKeyRef:
+                name: kafka
+                key: broker1host
+                optional: true
+          - name: KAFKA_BROKER1_PORT
+            valueFrom:
+              secretKeyRef:
+                name: kafka
+                key: broker1port
+                optional: true
+          - name: KAFKA_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: kafka
+                key: apikey
+                optional: true
+          - name: TRADE_HISTORY_SERVICE
+            value: "${TRADE_HISTORY_SERVICE}"
+          - name: TRADE_HISTORY_SERVICE_PORT
+            value: "${TRADE_HISTORY_PORT}"
+
+          resources:
+            limits:
+              cpu: 300m
+              memory: 300Mi
+            requests:
+              cpu: 5m
+              memory: 250Mi
+          imagePullPolicy: Always
+          securityContext:
+            capabilities: {}
+            privileged: false
+        restartPolicy: Always
+        dnsPolicy: ClusterFirst
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: portfolio
+    annotations:
+      template.alpha.openshift.io/wait-for-ready: 'true'
+    labels:
+      deploymentConfig: portfolio
+  spec:
+    strategy:
+      type: Recreate
+    triggers:
+     - type: ImageChange
+       imageChangeParams:
+         automatic: true
+         containerNames:
+         - portfolio
+         from:
+           kind: ImageStreamTag
+           name: 'portfolio:latest'
+           namespace: openshift
+     - type: ConfigChange
+    replicas: 1
+    selector:
+      deploymentConfig: portfolio
+    template:
+      metadata:
+        labels:
+          deploymentConfig: portfolio
+      spec:
+        containers:
+        - name: portfolio
+          image: portfolio
+          env:
+            - name: JDBC_HOST
+              value: "${MARIA_DB_SERVICE}"
+            - name: JDBC_PORT
+              value: "${MARIA_DB_PORT}"
+            - name: JDBC_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mariadb
+                  key: database-name
+            - name: JDBC_ID
+              valueFrom:
+                secretKeyRef:
+                  name: mariadb
+                  key: database-user
+            - name: JDBC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mariadb
+                  key: database-password
+            - name: WATSON_URL
+              valueFrom:
+                secretKeyRef:
+                  name: watson
+                  key: endpoint
+            - name: WATSON_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: watson
+                  key: apikey
+                  optional: true
+            - name: KAFKA_TOPIC
+              valueFrom:
+                secretKeyRef:
+                  name: kafka
+                  key: topic
+                  optional: true
+            - name: KAFKA_BROKER1_DNS
+              valueFrom:
+                secretKeyRef:
+                  name: kafka
+                  key: broker1host
+                  optional: true
+            - name: KAFKA_BROKER1_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: kafka
+                  key: broker1port
+                  optional: true
+            - name: KAFKA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kafka
+                  key: apikey
+                  optional: true
+          ports:
+          - name: http
+            containerPort: 9080
+            protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /portfolio/readiness
+              port: 9080
+            initialDelaySeconds: 45
+            timeoutSeconds: 3
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 300m
+              memory: 300Mi
+            requests:
+              cpu: 5m
+              memory: 250Mi
+          imagePullPolicy: Always
+          securityContext:
+            capabilities: {}
+            privileged: false
+        restartPolicy: Always
+        dnsPolicy: ClusterFirst
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: portfolio
+    annotations:
+      description: The app server's http port
+  spec:
+    ports:
+    - protocol: TCP
+      port: 9080
+      targetPort: 9080
+    selector:
+      deploymentConfig: portfolio
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: portfolio
+    annotations:
+      description: Route for application's http service
+      haproxy.router.openshift.io/disable_cookies: 'false'
+  spec:
+    host: "${APPLICATION_HOSTNAME}"
+    path: '/portfolio'
+    to:
+      kind: Service
+      name: portfolio
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: tradr
+    annotations:
+      description: Route for application's http service
+      haproxy.router.openshift.io/disable_cookies: 'false'
+  spec:
+    host: "${APPLICATION_HOSTNAME}"
+    path: '/tradr'
+    to:
+      kind: Service
+      name: tradr
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: trade-history
+    annotations:
+      description: Route for application's http service
+      haproxy.router.openshift.io/disable_cookies: 'false'
+  spec:
+    host: "${APPLICATION_HOSTNAME}"
+    path: '/trade-history'
+    to:
+      kind: Service
+      name: trade-history
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: stockquote
+    annotations:
+      description: Route for application's http service
+      haproxy.router.openshift.io/disable_cookies: 'false'
+  spec:
+    host: "${APPLICATION_HOSTNAME}"
+    path: '/stock-quote'
+    to:
+      kind: Service
+      name: stockquote
