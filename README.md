@@ -4,7 +4,7 @@ The IBM Stock Trader Lite application is a simple stock trading sample where you
 
 It keeps track of each porfolio's total value and its loyalty level which affects the commission charged per transaction. It is a simpler version  of the [IBM Stock Trader sample](https://github.com/IBMStockTrader/stocktrader) with fewer microservices designed to run in more resource constrained environments. The HTTPS and JWT security  of the original app have been removed to make  the  deployment configuration simple.
 
-This version is designed to be used for educational purposes on a Red Hat OpneShift CLUSTER. Instructions for deploying the app etc will be included with the educational materials of courses that include this sample.
+This version is designed to be used for educational purposes on a Red Hat OpenShift cluster. Instructions for deploying the app etc will be included with the educational materials of courses that include this sample.
 
 
 ![Architectural Diagram](microservices-architecture.png)
