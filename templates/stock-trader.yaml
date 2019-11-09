@@ -20,7 +20,7 @@ parameters:
 - name: APPLICATION_HOSTNAME
   displayName: Application hostname
   description: 'Custom hostname for service routes.  Leave blank for default hostname, e.g.: <application-name>.<project>.<default-domain-suffix>'
-  value: 'stocktrader-microservices.apps.ocp.kubernetes-workshops.com'
+  value: 'changeme'
   required: false
 - name: MARIA_DB_SERVICE
   displayName: Name of transactional database service
