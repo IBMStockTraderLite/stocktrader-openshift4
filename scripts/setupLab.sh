@@ -52,7 +52,7 @@ fi
 echo "Getting application  subdomain for cluster  ..."
 #ibmcloud ks cluster-get --cluster $CLUSTER_NAME > tmp.out
 
-INTERNAL_REG_HOST=`oc get route docker-registry --template='{{ .spec.host }}' -n default`
+INTERNAL_REG_HOST=`oc get route default-route --template='{{ .spec.host }}' -n openshift-image-registry`
 
 if [ $? -ne 0 ]
 then
@@ -60,7 +60,7 @@ then
     exit 1
 fi
 
-SUBDOMAIN=${INTERNAL_REG_HOST:24}
+SUBDOMAIN=${INTERNAL_REG_HOST:39}
 PROJECT=`oc project -q`
 ROUTEHOST="stocktrader-${PROJECT}.${SUBDOMAIN}"
 
