@@ -16,7 +16,7 @@ source variables.sh
 
 echo "Initializing MariaDB database ..."
 initDDL=$(cat ../mariadb/initsql.txt)
-mariadbPod=`oc  get pods --no-headers -o custom-columns=":metadata.name" | grep ${MARIADB_SERVICE_NAME}`
+mariadbPod=`oc  get pods --no-headers -o custom-columns=":metadata.name" --field-selector=status.phase==Running | grep ${MARIADB_SERVICE_NAME} | grep -v deploy`
 if [ -z "$mariadbPod" ]
 then
   echo "Fatal error: no MariaDB pod found. Exiting ..."
