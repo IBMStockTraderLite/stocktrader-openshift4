@@ -16,4 +16,4 @@
 source variables.sh
 
 echo "Deleting  Mongo deployment ..."
-oc delete all,secrets --selector app=$MONGODB_APP_NAME
+oc delete rc,svc,dc,secret --selector app=$MONGODB_APP_NAME

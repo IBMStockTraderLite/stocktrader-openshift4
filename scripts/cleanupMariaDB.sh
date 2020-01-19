@@ -16,4 +16,4 @@
 source variables.sh
 
 echo "Deleting  MariaDB deployment ..."
-oc delete all,secrets --selector app=$MARIADB_APP_NAME
+oc delete rc,svc,dc,secret --selector app=$MARIADB_APP_NAME
